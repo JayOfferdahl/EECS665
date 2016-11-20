@@ -1,0 +1,12 @@
+func(int a, int b) {
+    int x;
+
+    x = 0;
+
+    if(x < a)
+        x = a;
+    else
+        x = b;
+
+    return x;
+}

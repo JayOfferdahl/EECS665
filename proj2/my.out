@@ -1,0 +1,38 @@
+func func
+formal 4
+formal 4
+localloc 4
+bgnstmt 4
+t1 := local 0
+t2 := 0
+t3 := t1 =i t2
+bgnstmt 6
+t4 := local 0
+t5 := @i t4
+t6 := param 0
+t7 := @i t6
+t8 := t5 <i t7
+bt t8 B1
+br B2
+label L1
+bgnstmt 6
+t9 := local 0
+t10 := param 0
+t11 := @i t10
+t12 := t9 =i t11
+br B3
+label L2
+bgnstmt 8
+t13 := local 0
+t14 := param 1
+t15 := @i t14
+t16 := t13 =i t15
+label L3
+B1=L1
+B3=L3
+B2=L2
+bgnstmt 11
+t17 := local 0
+t18 := @i t17
+reti t18
+fend

@@ -372,15 +372,15 @@ struct sem_rec *op1(char *op, struct sem_rec *y) {
 /*
  * op2 - arithmetic operators
  */
-    struct sem_rec *op2(char *op, struct sem_rec *x, struct sem_rec *y) {
-        int conv = T_INT;
+struct sem_rec *op2(char *op, struct sem_rec *x, struct sem_rec *y) {
+    int conv = T_INT;
 
-        // Check if a conversion is needed
-        if(x->s_mode & T_DOUBLE || y->s_mode & T_DOUBLE)
-            conv = T_DOUBLE;
+    // Check if a conversion is needed
+    if(x->s_mode & T_DOUBLE || y->s_mode & T_DOUBLE)
+        conv = T_DOUBLE;
 
-        return gen(op, cast(x, conv), cast(y, conv), conv);
-    }
+    return gen(op, cast(x, conv), cast(y, conv), conv);
+}
 
 /*
  * opb - bitwise operators
@@ -458,7 +458,7 @@ struct sem_rec *set(char *op, struct sem_rec *x, struct sem_rec *y) {
         }
     }
 
-    // Annoying bug!
+    // Update the s_place of cast_y in order to fix labeling issues (was 1 less than needed)
     cast_y->s_place = currtemp();
 
     /*output quad for assignment*/

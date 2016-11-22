@@ -1,12 +1,11 @@
-func(int a, int b) {
-    int x;
+int z;
+double ff;
+double m[6];
 
-    x = 0;
+scale(double x) {
+	int i;
+	while (x == 0)
+		break;
 
-    if(x < a)
-        x = a;
-    else
-        x = b;
-
-    return x;
+	return 1;
 }

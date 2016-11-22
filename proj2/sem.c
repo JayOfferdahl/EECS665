@@ -12,8 +12,8 @@ extern int localnum;
 extern char localtypes[];
 extern int localwidths[];
 
-int numlabels = 0;                      /* total labels in file */
-int numblabels = 0;                     /* toal backpatch labels in file */
+int numlabels = 0;         /* total labels in file */
+int numblabels = 0;        /* toal backpatch labels in file */
 
 /*
  * backpatch - backpatch list of quadruples starting at p with k
@@ -36,13 +36,20 @@ void bgnstmt() {
  */
 struct sem_rec *call(char *f, struct sem_rec *args) {
     char type;
+    int argCount = 0;
 
     // Print all the back links
     while(args != NULL) {
         type = args->s_mode & T_DOUBLE ? 'f' : 'i';
         printf("arg%c t%i\n", type, args->s_place);
         args = args->back.s_link;
+        argCount++;
     }
+
+    // All functions in C are global!
+    printf("t%i := global %s\n", nexttemp(), f);
+    return gen("f", node(currtemp(), 0, NULL, NULL), 
+                    node(argCount, 0, NULL, NULL), 0);
 }
 
 /*
@@ -114,7 +121,7 @@ struct sem_rec *con(char *x) {
 }
 
 /*
- * dobreak - break statement
+ * dobreak - break statements
  */
 void dobreak() {
     // Generate goto, no need to store backpatch here since it's a break
@@ -128,14 +135,15 @@ void dobreak() {
  * docontinue - continue statement
  */
 void docontinue() {
-    fprintf(stderr, "sem: docontinue not implemented\n");
+    n();
 }
 
 /*
  * dodo - do statement
  */
 void dodo(int m1, int m2, struct sem_rec *e, int m3) {
-    fprintf(stderr, "sem: dodo not implemented\n");
+    backpatch(e->back.s_true, m2);
+    backpatch(e->s_false, m3);
 }
 
 /*
@@ -153,7 +161,7 @@ void dofor(int m1, struct sem_rec *e2, int m2, struct sem_rec *n1,
  * dogoto - goto statement
  */
 void dogoto(char *id) {
-    fprintf(stderr, "sem: dogoto not implemented\n");
+    lookup(id, 0);
 }
 
 /*
@@ -169,22 +177,22 @@ void doif(struct sem_rec *e, int m1, int m2) {
  */
 void doifelse(struct sem_rec *e, int m1, struct sem_rec *n, int m2, int m3) {
     backpatch(e->back.s_true, m1);
-    backpatch(n, m3);
     backpatch(e->s_false, m2);
+    backpatch(n, m3);
 }
 
 /*
  * doret - return statement
  */
 void doret(struct sem_rec *e) {
-    char type;
+    char type = 'i';
 
     // Determine whether this is an int, float, or addr
     if(e->s_mode & T_DOUBLE)
         type = 'f';
     else if(e->s_mode & T_INT)
         type = 'i';
-    else
+    else if(e->s_mode & T_ADDR)
         type = 'a';
 
     printf("ret%c t%i\n", type, e->s_place);
@@ -203,7 +211,8 @@ void dowhile(int m1, struct sem_rec *e, int m2, struct sem_rec *n, int m3) {
  * endloopscope - end the scope for a loop
  */
 void endloopscope(int m) {
-    fprintf(stderr, "sem: endloopscope not implemented\n");
+    for(int i = 0; i < m; i++)
+        leaveblock();
 }
 
 /*
@@ -250,10 +259,7 @@ struct id_entry *fname(int t, char *id) {
     enterblock();
 
     // Install this function into the symbol table
-    struct id_entry* func;
-
-    // Scope level 0 since functions can't be declared within functions
-    func = install(id, 0);
+    struct id_entry* func = install(id, 0);
     func->i_type = t;
     func->i_scope = GLOBAL;
 
@@ -294,7 +300,7 @@ struct sem_rec *id(char *x) {
         printf("t%d := param %d\n", nexttemp(), p->i_offset);
         if(p->i_type & T_ARRAY) {
             (void) nexttemp();
-            printf("t%d := @i t%d\n", currtemp(), currtemp()-1);
+            printf("t%d := @i t%d\n", currtemp(), currtemp() - 1);
         }
     }
 
@@ -318,7 +324,7 @@ void labeldcl(char *id) {
     slookup(id);
 
     // Print label statement and increment the number of labels
-    printf("***********label L%i\n", ++numlabels);
+    m();
 }
 
 /*
@@ -354,34 +360,34 @@ struct sem_rec *op1(char *op, struct sem_rec *y) {
         y->s_mode &= ~T_ADDR;
         return (gen(op, (struct sem_rec *) NULL, y, y->s_mode));
     }
-    else {
-        struct sem_rec * temp = gen(op, NULL, y, 0);
-        return temp;
+    else if(*op == '~' && y->s_mode == T_DOUBLE) {
+        // Cast this to int before trying to complement it, no need to reset
+        // this mode to double, it will be converted later if needed
+        y = cast(y, T_INT);
+        y->s_mode = T_INT;
     }
+    return gen(op, NULL, y, y->s_mode);
 }
 
 /*
  * op2 - arithmetic operators
  */
-struct sem_rec *op2(char *op, struct sem_rec *x, struct sem_rec *y) {
-    int conv = T_INT;
+    struct sem_rec *op2(char *op, struct sem_rec *x, struct sem_rec *y) {
+        int conv = T_INT;
 
-    // Check if a conversion is needed
-    if(x->s_mode & T_DOUBLE || y->s_mode & T_DOUBLE)
-        conv = T_DOUBLE;
+        // Check if a conversion is needed
+        if(x->s_mode & T_DOUBLE || y->s_mode & T_DOUBLE)
+            conv = T_DOUBLE;
 
-    struct sem_rec * temp = gen(op, cast(x, conv), cast(y, conv), conv);
-
-    return temp;
-}
+        return gen(op, cast(x, conv), cast(y, conv), conv);
+    }
 
 /*
  * opb - bitwise operators
  */
 struct sem_rec *opb(char *op, struct sem_rec *x, struct sem_rec *y) {
-    // Don't need to check for type conversion since we assume integers
-    struct sem_rec * temp = gen(op, x, y, T_INT);
-    return temp;
+    // If either inputs are doubles, convert to int before operating
+    return gen(op, cast(x, T_INT), cast(y, T_INT), T_INT);
 }
 
 /*
@@ -420,6 +426,23 @@ struct sem_rec *set(char *op, struct sem_rec *x, struct sem_rec *y) {
     /* assign the value of expression y to the lval x */
     struct sem_rec *p, *cast_y;
 
+    /* if for type consistency of x and y */
+    cast_y = y;
+    if((x->s_mode & T_DOUBLE) && !(y->s_mode & T_DOUBLE)){
+        /*cast y to a double*/
+        printf("t%d := cvf t%d\n", nexttemp(), y->s_place);
+        y->s_place = currtemp();
+        cast_y = node(currtemp(), T_DOUBLE, (struct sem_rec *) NULL,
+                (struct sem_rec *) NULL);
+    }
+    else if((x->s_mode & T_INT) && !(y->s_mode & T_INT)){
+        /*convert y to integer*/
+        printf("t%d := cvi t%d\n", nexttemp(), y->s_place);
+        y->s_place = currtemp();
+        cast_y = node(currtemp(), T_INT, (struct sem_rec *) NULL,
+                (struct sem_rec *) NULL);
+    }
+
     if(*op!='\0' || x==NULL || y==NULL) {
         if(x->s_mode > T_ARRAY) {
             // Float/double array
@@ -435,22 +458,8 @@ struct sem_rec *set(char *op, struct sem_rec *x, struct sem_rec *y) {
         }
     }
 
-    /* if for type consistency of x and y */
-    cast_y = y;
-    if((x->s_mode & T_DOUBLE) && !(y->s_mode & T_DOUBLE)){
-
-        /*cast y to a double*/
-        printf("t%d = cvf t%d\n", nexttemp(), y->s_place);
-        cast_y = node(currtemp(), T_DOUBLE, (struct sem_rec *) NULL,
-                (struct sem_rec *) NULL);
-    }
-    else if((x->s_mode & T_INT) && !(y->s_mode & T_INT)){
-
-        /*convert y to integer*/
-        printf("t%d = cvi t%d\n", nexttemp(), y->s_place);
-        cast_y = node(currtemp(), T_INT, (struct sem_rec *) NULL,
-                (struct sem_rec *) NULL);
-    }
+    // Annoying bug!
+    cast_y->s_place = currtemp();
 
     /*output quad for assignment*/
     if(x->s_mode & T_DOUBLE)
@@ -483,8 +492,6 @@ struct sem_rec *string(char *s) {
     // Return a semantic record holding this temporary and type of string
     return node(currtemp(), T_STR, NULL, NULL);
 }
-
-
 
 /************* Helper Functions **************/
 

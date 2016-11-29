@@ -55,25 +55,25 @@ top :               /* empty rule */
  * useful for this.
  ******************************************************************************/
 global : ALLOC ID INT   {
-    printf( "    .data\n" );
-    printf( "    .globl %s\n", $2 );
-    printf( "%s:\n",$2); 
-    printf( "    .fill     %lld, 1, 0\n\n", $3 );
+    printf( ".data\n" );
+    printf( ".globl %s\n", $2 );
+    printf( "%s:\n", $2); 
+    printf( ".fill %lld, 1, 0\n\n", $3 );
 }
 
 /******************************************************************************
  * Parse an entire function definition.
  ******************************************************************************/
 func  : fhead formals locals stmts FEND {
-    printf("    addl       $%d, %%esp\n", STACK_SIZE);
-    printf("    pop        %%ebp\n" );
-    printf("    ret\n\n");
+    printf("addl $%d, %%esp\n", STACK_SIZE);
+    printf("pop %%ebp\n" );
+    printf("ret\n\n" );
 
     for (string_t *str = function->strings; str != NULL; str = str->next) {
-        printf( "    .data\n" );
-        printf( "    .globl %s\n", str->name );
+        printf( ".data\n" );
+        printf( ".globl %s\n", str->name );
         printf( "%s:\n", str->name ); 
-        printf( "    .asciz    %s\n\n", str->str );
+        printf( ".asciz %s\n\n", str->str );
     }
 
     function_destroy($1);
@@ -88,12 +88,12 @@ func  : fhead formals locals stmts FEND {
  ******************************************************************************/
 fhead : FUNC ID {
     function = function_init($2);
-    printf("    .text\n");
-    printf("    .globl %s\n", $2);
+    printf(".text\n" );
+    printf(".globl %s\n", $2);
     printf("%s:\n", $2);
-    printf("    push       %%ebp\n");
-    printf("    movl       %%esp, %%ebp\n");
-    printf("    subl       $%d, %%esp\n", STACK_SIZE);
+    printf("push %%ebp\n" );
+    printf("movl %%esp, %%ebp\n" );
+    printf("subl $%d, %%esp\n", STACK_SIZE);
 
     $$ = function;
 }
@@ -143,7 +143,7 @@ ops     : /* empty rule */        { $$ = NULL; }
         | ops ID ASSIGN STR       { $$ = function_getstr(function,$4,$2); } 
         | ops ID ASSIGN unop      { $$ = function_gettemp(function,4,$2); }
         | ops ID ASSIGN binop     { $$ = function_gettemp(function,4,$2); 
-                                    printf( "    movl       %%eax, " );
+                                    printf( "movl %%eax, " );
                                     function_printtemp(function,$2);
                                     printf( "\n" ); }
         | ops unop                { }
@@ -155,14 +155,27 @@ ops     : /* empty rule */        { $$ = NULL; }
  * move the correct return value into the EAX register (EAX is the return
  * value register according to cdecl calling conventions).
  ******************************************************************************/
-unop    : ISUB ID       { }
+unop    : ISUB ID       { printf( "movl " );
+                          function_printtemp(function, $2);
+                          printf( ", %%eax\n" );
+                          printf( "neg %%eax\n" ); }
         | IINV ID       { }
         | IDEREF ID     { }
-        | IARG ID       { }
+        | IARG ID       { printf( "push " );
+                          function_printtemp(function, $2);
+                          printf( "\n" ); }
         | ICALL ID INT  { /* printf( "calling " );
                           function_labeltemp(function,$2);
-                          printf( " with %lld arguments\n", $3); */ }
-        | IRET ID       { printf( "    movl       " );
+                          printf( " with %lld arguments\n", $3); */ 
+                          printf( "movl " );
+                          function_printtemp(function, $2);
+                          printf( ", %%eax\n" );
+                          printf( "call " );
+                          printf( "*%%eax\n" );
+                          printf( "addl " );
+                          int temp = $3 * 4;
+                          printf( "$%d, %%esp\n", temp); }
+        | IRET ID       { printf( "movl " );
                           function_printtemp(function,$2);
                           printf( ", %%eax\n" ); }
         | ICONV ID      { }
@@ -194,20 +207,57 @@ binop   : ID IEQ ID     { }
         | ID IAND ID    { }
         | ID IOR ID     { }
         | ID IXOR ID    { }
-        | ID ISHL ID    { }
-        | ID ISHR ID    { }
-        | ID IADD ID    { printf( "    movl       " );
+        | ID ISHL ID    { printf( "movl " );
+                          function_printtemp(function, $3);
+                          printf( ", %%eax\n" );
+                          printf( "mov " );
+                          function_printtemp(function, $1);
+                          printf( ", %%cl\n" );
+                          printf( "sall %%cl, %%eax\n" ); }
+        | ID ISHR ID    { printf( "movl " );
+                          function_printtemp(function, $3);
+                          printf( ", %%eax\n" );
+                          printf( "mov " );
+                          function_printtemp(function, $1);
+                          printf( ", %%cl\n" );
+                          printf( "sarl %%cl, %%eax\n" ); }
+        | ID IADD ID    { printf( "movl " );
                           function_printtemp(function,$3);
                           printf( ", %%eax\n" );
-
-                          printf( "    addl       " );
+                          printf( "addl " );
                           function_printtemp(function,$1);
                           printf( ", " );
                           printf( "%%eax\n" ); }
-        | ID ISUB ID    { }
-        | ID IMUL ID    { }
-        | ID IDIV ID    { }
-        | ID IMOD ID    { }
+        | ID ISUB ID    { printf( "movl " );
+                          function_printtemp(function,$3);
+                          printf( ", %%eax\n" );
+                          printf( "subl " );
+                          function_printtemp(function,$1);
+                          printf( ", " );
+                          printf( "%%eax\n" ); }
+        | ID IMUL ID    { printf( "movl " );
+                          function_printtemp(function,$3);
+                          printf( ", %%eax\n" ); 
+                          printf( "imul " );
+                          function_printtemp(function,$1);
+                          printf( ", " );
+                          printf( "%%eax\n" ); }
+        | ID IDIV ID    { printf( "movl $0, %%edx\n" );
+                          printf( "movl " );
+                          function_printtemp(function,$3);
+                          printf( ", %%eax\n" ); 
+                          printf( "idivl ");
+                          function_printtemp(function,$1);
+                          printf( "\n"); }
+        | ID IMOD ID    { printf( " movl $0, %%edx\n" );
+                          printf( "movl " );
+                          function_printtemp(function,$3);
+                          printf( ", %%eax\n" ); 
+                          printf( "idivl ");
+                          function_printtemp(function,$1);
+                          printf( "\n" ); 
+                          printf( "movl " );
+                          printf( " %%edx, %%eax\n" ); }
         | ID IIDX ID    { }
         | ID FEQ ID     { }
         | ID FNE ID     { }
